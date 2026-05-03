@@ -222,18 +222,83 @@
       }
 
       .statPanel {
-        min-width: 132px;
-        padding: 11px 12px;
+        min-width: 100px;
+        padding: 8px 10px;
       }
 
       .keys {
-        grid-template-columns: repeat(4, 50px);
+        grid-template-columns: repeat(4, 42px);
+        gap: 8px;
       }
 
       .key {
-        width: 50px;
-        height: 50px;
+        width: 42px;
+        height: 42px;
+        font-size: 20px;
       }
+
+      #touchControls {
+        display: flex !important;
+      }
+    }
+
+    @media (pointer: coarse) {
+      #touchControls {
+        display: flex !important;
+      }
+    }
+
+    @media (hover: none) and (pointer: coarse) {
+      /* Mobile-first: hide desktop key hints in overlay */
+      .keys {
+        display: none;
+      }
+      #overlay p {
+        max-width: 500px;
+        font-size: clamp(14px, 3vw, 18px);
+      }
+    }
+
+    /* Touch control buttons overlaid below the hit zone */
+    #touchControls {
+      display: none;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 22vh;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .touchLane {
+      position: absolute;
+      bottom: 10px;
+      top: 4px;
+      border-radius: 16px 16px 0 0;
+      border: 2px solid transparent;
+      transition: background 0.08s, border-color 0.08s;
+      pointer-events: auto;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
+    }
+
+    .touchLane.active {
+      background: var(--lane-color) !important;
+      border-color: white;
+      opacity: 0.6 !important;
+    }
+
+    .touchLane:nth-child(1) { left: calc(9% + 0 * 21%); width: 20%; }
+    .touchLane:nth-child(2) { left: calc(9% + 1 * 21%); width: 20%; }
+    .touchLane:nth-child(3) { left: calc(9% + 2 * 21%); width: 20%; }
+    .touchLane:nth-child(4) { left: calc(9% + 3 * 21%); width: 20%; }
+
+    @media (min-width: 700px) {
+      .touchLane:nth-child(1) { left: calc(10% + 0 * 20%); width: 19%; }
+      .touchLane:nth-child(2) { left: calc(10% + 1 * 20%); width: 19%; }
+      .touchLane:nth-child(3) { left: calc(10% + 2 * 20%); width: 19%; }
+      .touchLane:nth-child(4) { left: calc(10% + 3 * 20%); width: 19%; }
     }
   </style>
 </head>
@@ -258,7 +323,7 @@
 
     <div id="overlay">
       <h1>Neon Pulse</h1>
-      <p>Hit falling notes on the glowing line. Use <strong>D</strong>, <strong>F</strong>, <strong>J</strong>, <strong>K</strong>. Perfect ±50ms, Great ±100ms, Good ±150ms.</p>
+      <p>Tap the lanes or press <strong>D</strong>, <strong>F</strong>, <strong>J</strong>, <strong>K</strong>. Perfect ±50ms, Great ±100ms, Good ±150ms.</p>
       <div class="keys">
         <div class="key" style="color: var(--red);">D</div>
         <div class="key" style="color: var(--cyan);">F</div>
@@ -266,6 +331,14 @@
         <div class="key" style="color: var(--green);">K</div>
       </div>
     </div>
+  </div>
+
+  <!-- Touch controls overlay (hidden on desktop) -->
+  <div id="touchControls">
+    <div class="touchLane" data-lane="0" style="--lane-color: var(--red);"></div>
+    <div class="touchLane" data-lane="1" style="--lane-color: var(--cyan);"></div>
+    <div class="touchLane" data-lane="2" style="--lane-color: var(--yellow);"></div>
+    <div class="touchLane" data-lane="3" style="--lane-color: var(--green);"></div>
   </div>
 
   <script>
@@ -678,6 +751,74 @@
         activeKeys.set(key, performance.now());
         hitNote(keyToLane[key], currentSongTime(performance.now()));
       });
+
+      // Touch support
+      const touchLanes = document.querySelectorAll('.touchLane');
+      let touchActiveLanes = new Set();
+
+      function getTouchLane(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        const relX = clientX - rect.left;
+        const relY = clientY - rect.top;
+        // Map touch position to lane
+        const lx = relX - playLeft;
+        const laneIdx = Math.floor(lx / laneWidth);
+        if (laneIdx >= 0 && laneIdx < 4 && relY > height * 0.35) {
+          return laneIdx;
+        }
+        return -1;
+      }
+
+      function handleTouchStart(evt) {
+        evt.preventDefault();
+        for (const touch of evt.changedTouches) {
+          const laneIdx = getTouchLane(touch.clientX, touch.clientY);
+          if (laneIdx >= 0 && !touchActiveLanes.has(laneIdx)) {
+            touchActiveLanes.add(laneIdx);
+            touchLanes[laneIdx].classList.add('active');
+            hitNote(laneIdx, currentSongTime(performance.now()));
+          }
+        }
+      }
+
+      function handleTouchEnd(evt) {
+        evt.preventDefault();
+        for (const touch of evt.changedTouches) {
+          const laneIdx = getTouchLane(touch.clientX, touch.clientY);
+          touchActiveLanes.delete(laneIdx);
+          if (laneIdx >= 0) {
+            touchLanes[laneIdx].classList.remove('active');
+          }
+        }
+      }
+
+      function handleTouchMove(evt) {
+        evt.preventDefault();
+        const newActive = new Set();
+        for (const touch of evt.changedTouches) {
+          const laneIdx = getTouchLane(touch.clientX, touch.clientY);
+          if (laneIdx >= 0) {
+            newActive.add(laneIdx);
+            if (!touchActiveLanes.has(laneIdx)) {
+              touchActiveLanes.add(laneIdx);
+              touchLanes[laneIdx].classList.add('active');
+              hitNote(laneIdx, currentSongTime(performance.now()));
+            }
+          }
+        }
+        // Clear lanes no longer touched
+        for (const idx of touchActiveLanes) {
+          if (!newActive.has(idx)) {
+            touchLanes[idx].classList.remove('active');
+          }
+        }
+        touchActiveLanes = newActive;
+      }
+
+      canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+      canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+      canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+      canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
 
       window.addEventListener('resize', resize);
       resize();
